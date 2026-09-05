@@ -1,3 +1,9 @@
 
 # 本地参考项目（shallow clone，不入库）
 references/
+.superpowers/
+__pycache__/
+*.egg-info/
+gomoku.db
+frontend/node_modules/
+frontend/dist/
