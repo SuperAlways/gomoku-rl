@@ -1,8 +1,27 @@
+import pytest
 from fastapi.testclient import TestClient
 
-from gomoku.server.app import app
+from gomoku.db import connect
+from gomoku.server import app as app_module
 
-client = TestClient(app)
+client = TestClient(app_module.app)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_db(tmp_path, monkeypatch):
+    """每个测试使用独立的临时数据库，并清空 sessions 字典。"""
+    db_path = str(tmp_path / "test.db")
+    new_conn = connect(db_path, check_same_thread=False)
+    old_conn = app_module.conn
+    old_sessions = app_module.sessions
+    monkeypatch.setattr(app_module, "conn", new_conn)
+    app_module.sessions = {}
+    try:
+        yield
+    finally:
+        app_module.conn = old_conn
+        app_module.sessions = old_sessions
+        new_conn.close()
 
 
 def test_new_game_human_vs_ai():
@@ -58,9 +77,17 @@ def test_ai_vs_ai_via_ai_move_endpoint():
 
 
 def test_games_list():
+    r = client.post("/api/new", json={"black": "human", "white": "minimax-easy"})
+    assert r.status_code == 200
+    gid = r.json()["game_id"]
     r = client.get("/api/games")
     assert r.status_code == 200
-    assert isinstance(r.json(), list)
+    games = r.json()
+    assert isinstance(games, list)
+    match = [g for g in games if g["id"] == gid]
+    assert len(match) == 1
+    assert match[0]["black_name"] == "human"
+    assert match[0]["white_name"] == "minimax-easy"
 
 
 def test_new_game_rejects_unknown_kind():

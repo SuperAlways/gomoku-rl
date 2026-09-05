@@ -1,4 +1,5 @@
 import pathlib
+import threading
 
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -13,6 +14,8 @@ from gomoku.players.minimax import MinimaxPlayer
 app = FastAPI(title="gomoku-rl")
 conn = connect(check_same_thread=False)
 sessions: dict[int, dict] = {}   # game_id -> {"board": Board, "black": Player, "white": Player}
+_sessions_lock = threading.Lock()
+# M0 单进程假设，粗粒度锁防并发落子竞态
 
 _RESULT = {BLACK: "black_win", WHITE: "white_win", 3: "draw"}
 
@@ -85,41 +88,44 @@ def new_game(req: NewGameReq):
         white = _make_player(req.white)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    board = Board()
-    game_id = create_game(conn, req.black, req.white)
-    sessions[game_id] = {"board": board, "black": black, "white": white}
-    _play_one_ai_move(game_id)   # 黑方是 AI 时先走一手
-    _maybe_finish(game_id)
-    return _state(game_id)
+    with _sessions_lock:
+        board = Board()
+        game_id = create_game(conn, req.black, req.white)
+        sessions[game_id] = {"board": board, "black": black, "white": white}
+        _play_one_ai_move(game_id)   # 黑方是 AI 时先走一手
+        _maybe_finish(game_id)
+        return _state(game_id)
 
 
 @app.post("/api/move")
 def move(req: MoveReq):
-    if req.game_id not in sessions:
-        raise HTTPException(status_code=404, detail="game not found")
-    board = sessions[req.game_id]["board"]
-    if board.game_over:
-        raise HTTPException(status_code=400, detail="game is over")
-    player = (sessions[req.game_id]["black"] if board.current_player == BLACK
-              else sessions[req.game_id]["white"])
-    if not isinstance(player, HumanPlayer):
-        raise HTTPException(status_code=400, detail="not human's turn")
-    try:
-        board.play(req.row, req.col)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    record_move(conn, req.game_id, board.history[-1])
-    _maybe_finish(req.game_id)
-    return _state(req.game_id)
+    with _sessions_lock:
+        if req.game_id not in sessions:
+            raise HTTPException(status_code=404, detail="game not found")
+        board = sessions[req.game_id]["board"]
+        if board.game_over:
+            raise HTTPException(status_code=400, detail="game is over")
+        player = (sessions[req.game_id]["black"] if board.current_player == BLACK
+                  else sessions[req.game_id]["white"])
+        if not isinstance(player, HumanPlayer):
+            raise HTTPException(status_code=400, detail="not human's turn")
+        try:
+            board.play(req.row, req.col)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        record_move(conn, req.game_id, board.history[-1])
+        _maybe_finish(req.game_id)
+        return _state(req.game_id)
 
 
 @app.post("/api/ai-move")
 def ai_move(req: GameIdReq):
-    if req.game_id not in sessions:
-        raise HTTPException(status_code=404, detail="game not found")
-    _play_one_ai_move(req.game_id)
-    _maybe_finish(req.game_id)
-    return _state(req.game_id)
+    with _sessions_lock:
+        if req.game_id not in sessions:
+            raise HTTPException(status_code=404, detail="game not found")
+        _play_one_ai_move(req.game_id)
+        _maybe_finish(req.game_id)
+        return _state(req.game_id)
 
 
 @app.get("/api/games")

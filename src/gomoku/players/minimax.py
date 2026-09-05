@@ -61,7 +61,10 @@ def _side_score(lines: list[str], player: int) -> int:
 
 
 def evaluate(board: Board, player: int) -> int:
-    """全盘评估：player 视角 = 我方棋型分 − 2×对方棋型分（防守加权）"""
+    """全盘评估：player 视角 = 我方棋型分 − 2×对方棋型分（防守加权）
+
+    评估非零和（防守加权 2×），negamax 逐层取负是近似，浅搜索（depth≤4）下实践可行。
+    """
     lines = _all_lines(board)
     return _side_score(lines, player) - 2 * _side_score(lines, 3 - player)
 
