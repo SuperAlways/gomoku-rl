@@ -11,9 +11,21 @@ async function post(path, body) {
   return res.json();
 }
 
+async function get(path) {
+  const res = await fetch(path);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || res.statusText);
+  }
+  return res.json();
+}
+
 export const api = {
   newGame: (black, white) => post("/api/new", { black, white }),
   move: (gameId, row, col) => post("/api/move", { game_id: gameId, row, col }),
   aiMove: (gameId) => post("/api/ai-move", { game_id: gameId }),
-  games: () => fetch("/api/games").then((r) => r.json()),
+  undo: (gameId) => post("/api/undo", { game_id: gameId }),
+  games: () => get("/api/games"),
+  record: (gameId) => get(`/api/games/${gameId}/record`),
+  downloadSgf: (gameId) => { window.location.assign(`/api/games/${gameId}/sgf`); },
 };

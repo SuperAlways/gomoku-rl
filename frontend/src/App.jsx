@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Board from "./Board";
+import Replay from "./Replay";
 import { api } from "./api";
 
 const OPTIONS = [
@@ -9,7 +10,6 @@ const OPTIONS = [
   { value: "minimax-hard", label: "Minimax·困难" },
 ];
 const PENDING = [
-  ["悔棋", "M1"], ["棋谱下载", "M1"], ["历史对局", "M1"],
   ["RL 对战", "M2+"], ["训练面板", "M4+"],
 ];
 
@@ -18,11 +18,14 @@ function labelOf(kind) {
 }
 
 export default function App() {
+  const [view, setView] = useState("config");   // config | game | history | replay
   const [config, setConfig] = useState({ black: "human", white: "minimax-hard" });
   const [game, setGame] = useState(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
   const [showRematch, setShowRematch] = useState(false);
+  const [historyList, setHistoryList] = useState(null);
+  const [replayRecord, setReplayRecord] = useState(null);
   const toastTimer = useRef(null);
 
   const showToast = (msg) => {
@@ -33,8 +36,10 @@ export default function App() {
 
   const start = async () => {
     setBusy(true);
-    try { setGame(await api.newGame(config.black, config.white)); }
-    catch (e) { showToast(e.message); }
+    try {
+      setGame(await api.newGame(config.black, config.white));
+      setView("game");
+    } catch (e) { showToast(e.message); }
     finally { setBusy(false); }
   };
 
@@ -46,9 +51,17 @@ export default function App() {
     finally { setBusy(false); }
   };
 
+  const undo = async () => {
+    if (busy) return;
+    setBusy(true);
+    try { setGame(await api.undo(game.game_id)); }
+    catch (e) { showToast(e.message); }
+    finally { setBusy(false); }
+  };
+
   // AI 回合：延迟请求一手；机 vs 机时随状态更新自动连续走
   useEffect(() => {
-    if (!game || game.game_over) return;
+    if (view !== "game" || !game || game.game_over) return;
     const side = game.current_player === 1 ? config.black : config.white;
     if (side === "human") return;
     const t = setTimeout(async () => {
@@ -58,7 +71,7 @@ export default function App() {
       finally { setBusy(false); }
     }, 400);
     return () => clearTimeout(t);
-  }, [game]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [game, view]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   // 终局 30 秒后提示重开（含平局）
   useEffect(() => {
@@ -66,6 +79,68 @@ export default function App() {
     const t = setTimeout(() => setShowRematch(true), 30_000);
     return () => clearTimeout(t);
   }, [game]);
+
+  // 进入历史视图时拉取列表
+  useEffect(() => {
+    if (view !== "history") return;
+    api.games().then(setHistoryList).catch((e) => showToast(e.message));
+  }, [view]);
+
+  const backToConfig = () => {
+    setGame(null);
+    setView("config");
+  };
+
+  const goHistory = () => {
+    setGame(null);
+    setHistoryList(null);
+    setView("history");
+  };
+
+  const openReplay = async (gid) => {
+    try {
+      setReplayRecord(await api.record(gid));
+      setView("replay");
+    } catch (e) { showToast(e.message); }
+  };
+
+  if (view === "history") {
+    return (
+      <div className="setup">
+        <h1>历史对局</h1>
+        {!historyList ? <p>加载中…</p>
+          : historyList.length === 0 ? <p>还没有对局</p> : (
+          <table className="history">
+            <thead>
+              <tr><th>时间</th><th>黑方</th><th>白方</th><th>结果</th><th>手数</th><th></th></tr>
+            </thead>
+            <tbody>
+              {historyList.map((g) => (
+                <tr key={g.id}>
+                  <td>{g.started_at}</td>
+                  <td>{g.black_name}</td>
+                  <td>{g.white_name}</td>
+                  <td>{g.result}</td>
+                  <td>{g.total_moves}</td>
+                  <td>
+                    <button onClick={() => openReplay(g.id)}>回放</button>
+                    {" "}
+                    <button onClick={() => api.downloadSgf(g.id)}>SGF</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <div><button onClick={() => setView("config")}>返回</button></div>
+        {toast && <div className="toast">{toast}</div>}
+      </div>
+    );
+  }
+
+  if (view === "replay") {
+    return <Replay record={replayRecord} onBack={goHistory} />;
+  }
 
   if (!game) {
     return (
@@ -86,6 +161,9 @@ export default function App() {
         <div>
           <button onClick={start} disabled={busy}>开始对局</button>
         </div>
+        <div>
+          <button onClick={goHistory}>历史对局</button>
+        </div>
         {toast && <div className="toast">{toast}</div>}
       </div>
     );
@@ -93,6 +171,9 @@ export default function App() {
 
   const currentKind = game.current_player === 1 ? config.black : config.white;
   const humanTurn = currentKind === "human";
+  const bothHuman = config.black === "human" && config.white === "human";
+  const canUndo = !game.game_over
+    && (bothHuman ? game.moves.length >= 1 : humanTurn && game.moves.length >= 2);
 
   return (
     <div className="game">
@@ -103,18 +184,21 @@ export default function App() {
               : `胜者：${labelOf(game.winner === 1 ? config.black : config.white)}`)
           : `轮到：${labelOf(currentKind)}${busy && !humanTurn ? "（思考中…）" : ""}`}
         <span>第 {game.moves.length} 手</span>
-        <button onClick={() => setGame(null)}>重新开局</button>
+        <button onClick={backToConfig}>重新开局</button>
       </div>
       <Board grid={game.board} lastMove={game.last_move} winLine={game.win_line}
              onPlay={play} locked={busy || game.game_over || !humanTurn} />
       {game.game_over && showRematch && (
         <div className="rematch-bar">
           <span>再来一局？</span>
-          <button onClick={() => setGame(null)}>重开一局</button>
+          <button onClick={backToConfig}>重开一局</button>
           <button onClick={() => setShowRematch(false)}>继续看</button>
         </div>
       )}
       <div className="toolbar">
+        <button onClick={undo} disabled={busy || !canUndo}>悔棋</button>
+        <button onClick={() => api.downloadSgf(game.game_id)}>棋谱下载</button>
+        <button onClick={goHistory}>历史对局</button>
         {PENDING.map(([label, milestone]) => (
           <button key={label} className="pending"
                   onClick={() => showToast(`${label}：后续开发（${milestone}）`)}>
