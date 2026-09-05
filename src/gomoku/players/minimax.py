@@ -7,6 +7,7 @@
 import numpy as np
 
 from gomoku.core import Board
+from gomoku.players.base import Player
 
 # 棋型打分表：从上到下优先级递减，同一方向/同一条线匹配到即停（只计最高棋型）
 # 模式串：'1'=本方棋子, '2'=对方棋子, '0'=空位
@@ -117,3 +118,81 @@ def candidates(board: Board, limit: int = 12) -> list[tuple[int, int]]:
         reverse=True,
     )
     return scored[:limit]
+
+
+WIN = 10**9
+
+LEVELS = {"easy": 1, "medium": 2, "hard": 4}
+
+
+def _immediate(board: Board) -> tuple[int, int] | None:
+    """hard 顶层快检：我能立即连五就下；对方能立即连五就堵。"""
+    me = board.current_player
+    for who in (me, 3 - me):
+        for r, c in raw_candidates(board):
+            board.play(r, c)
+            won = board.winner == who
+            board.undo()
+            if won:
+                return (r, c)
+    return None
+
+
+def _search(board: Board, depth: int, alpha: int, beta: int) -> int:
+    """负极大 α-β：返回值是"当前行棋方"视角的分。
+
+    终局时 current_player 停在刚落子的一方（Board.play 的约定），
+    所以 winner == current_player 即"当前行棋方刚赢"。
+    """
+    if board.game_over:
+        if board.winner == 3:
+            return 0
+        return WIN if board.winner == board.current_player else -WIN
+    if depth == 0:
+        return evaluate(board, board.current_player)
+    best = -10**9
+    for r, c in candidates(board, limit=12):
+        board.play(r, c)
+        score = -_search(board, depth - 1, -beta, -alpha)
+        board.undo()
+        if score > best:
+            best = score
+        if score > alpha:
+            alpha = score
+        if alpha >= beta:
+            break
+    return best
+
+
+class MinimaxPlayer(Player):
+    """α-β 剪枝 Minimax，难度 = 搜索深度（easy/medium/hard = 1/2/4 层）。"""
+
+    def __init__(self, level: str = "medium"):
+        if level not in LEVELS:
+            raise ValueError(f"unknown level: {level}")
+        self.level = level
+        self.depth = LEVELS[level]
+        self.name = f"minimax-{level}"
+
+    def select_move(self, board: Board) -> int:
+        if board.game_over:
+            raise ValueError("game is over")
+        if not board.history:
+            center = board.size // 2
+            return center * board.size + center
+        if self.level == "hard":
+            forced = _immediate(board)
+            if forced:
+                return forced[0] * board.size + forced[1]
+        # easy 档：1 层启发式贪心（靠候选排序的防守分堵四）
+        if self.depth == 1:
+            r, c = candidates(board, limit=12)[0]
+            return r * board.size + c
+        best_action, best_score = None, -10**9
+        for r, c in candidates(board, limit=12):
+            board.play(r, c)
+            score = -_search(board, self.depth - 1, -10**9, 10**9)
+            board.undo()
+            if score > best_score:
+                best_action, best_score = (r, c), score
+        return best_action[0] * board.size + best_action[1]
