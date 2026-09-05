@@ -83,7 +83,10 @@ export default function App() {
   // 进入历史视图时拉取列表
   useEffect(() => {
     if (view !== "history") return;
-    api.games().then(setHistoryList).catch((e) => showToast(e.message));
+    api.games().then(setHistoryList).catch((e) => {
+      setHistoryList([]);
+      showToast(e.message);
+    });
   }, [view]);
 
   const backToConfig = () => {
