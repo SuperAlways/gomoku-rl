@@ -9,9 +9,9 @@ def _coord(row: int, col: int) -> str:
 
 
 def build_sgf(black_name: str, white_name: str, result: str,
-              moves: list[tuple[int, int, int]]) -> str:
+              moves: list[tuple[int, int, int]], size: int = 15) -> str:
     """moves: [(player, row, col), ...]（Board.history / moves 表同构）。"""
-    parts = [f"(;FF[4]SZ[15]PB[{black_name}]PW[{white_name}]"]
+    parts = [f"(;FF[4]SZ[{size}]PB[{black_name}]PW[{white_name}]"]
     if result in _RE:
         parts.append(f"RE[{_RE[result]}]")
     parts.append("\n")

@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS games (
     black_name TEXT NOT NULL,
     white_name TEXT NOT NULL,
     result TEXT NOT NULL DEFAULT 'ongoing',
-    total_moves INTEGER NOT NULL DEFAULT 0
+    total_moves INTEGER NOT NULL DEFAULT 0,
+    size INTEGER NOT NULL DEFAULT 15
 );
 CREATE TABLE IF NOT EXISTS moves (
     game_id INTEGER NOT NULL REFERENCES games(id),
@@ -25,14 +26,18 @@ def connect(path: str = "gomoku.db", check_same_thread: bool = True) -> sqlite3.
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(games)")}
+    if "size" not in cols:
+        conn.execute("ALTER TABLE games ADD COLUMN size INTEGER NOT NULL DEFAULT 15")
     conn.commit()
     return conn
 
 
-def create_game(conn: sqlite3.Connection, black_name: str, white_name: str) -> int:
+def create_game(conn: sqlite3.Connection, black_name: str, white_name: str,
+                size: int = 15) -> int:
     cur = conn.execute(
-        "INSERT INTO games (black_name, white_name) VALUES (?, ?)",
-        (black_name, white_name),
+        "INSERT INTO games (black_name, white_name, size) VALUES (?, ?, ?)",
+        (black_name, white_name, size),
     )
     conn.commit()
     return cur.lastrowid

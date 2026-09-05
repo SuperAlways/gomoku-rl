@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -170,3 +172,49 @@ def test_sgf_endpoint():
     assert r.headers["content-type"].startswith("text/x-sgf")
     assert "SZ[15]" in r.text and ";B[he]" in r.text and ";W[ia]" in r.text
     assert r.text.count(";B[") == 5 and r.text.count(";W[") == 4
+
+
+def test_new_game_3x3():
+    r = client.post("/api/new", json={"black": "human", "white": "human", "size": 3})
+    assert r.status_code == 200
+    s = r.json()
+    assert s["size"] == 3 and len(s["board"]) == 3
+
+
+def test_new_game_rejects_bad_size():
+    r = client.post("/api/new", json={"black": "human", "white": "human", "size": 4})
+    assert r.status_code == 400
+
+
+def test_qtable_requires_3x3():
+    r = client.post("/api/new", json={"black": "qtable", "white": "human", "size": 15})
+    assert r.status_code == 400
+
+
+def test_qtable_first_move(tmp_path, monkeypatch):
+    path = tmp_path / "qtable.json"
+    path.write_text(json.dumps({"meta": {}, "states": {}}), encoding="utf-8")
+    monkeypatch.setattr(app_module, "QTABLE_PATH", str(path))
+    r = client.post("/api/new", json={"black": "qtable", "white": "human", "size": 3})
+    assert r.status_code == 200
+    s = r.json()
+    assert sum(v != 0 for row in s["board"] for v in row) == 1   # AI 执黑先走一手
+    assert s["current_player"] == 2
+
+
+def test_qtable_missing_file_400(tmp_path, monkeypatch):
+    monkeypatch.setattr(app_module, "QTABLE_PATH", str(tmp_path / "nope.json"))
+    r = client.post("/api/new", json={"black": "qtable", "white": "human", "size": 3})
+    assert r.status_code == 400
+
+
+def test_3x3_record_and_sgf():
+    r = client.post("/api/new", json={"black": "human", "white": "human", "size": 3})
+    gid = r.json()["game_id"]
+    for row, col in [(0, 0), (1, 0), (0, 1), (1, 1), (0, 2)]:
+        client.post("/api/move", json={"game_id": gid, "row": row, "col": col})
+    rec = client.get(f"/api/games/{gid}/record").json()
+    assert rec["size"] == 3 and rec["result"] == "black_win"
+    assert len(rec["win_line"]) == 3
+    sgf = client.get(f"/api/games/{gid}/sgf")
+    assert sgf.status_code == 200 and "SZ[3]" in sgf.text

@@ -10,6 +10,7 @@ from gomoku.db import connect, create_game, record_move, finish_game, list_games
 from gomoku.players.base import Player
 from gomoku.players.human import HumanPlayer
 from gomoku.players.minimax import MinimaxPlayer
+from gomoku.players.qtable import QTablePlayer
 from gomoku.sgf import build_sgf
 
 app = FastAPI(title="gomoku-rl")
@@ -17,6 +18,8 @@ conn = connect(check_same_thread=False)
 sessions: dict[int, dict] = {}   # game_id -> {"board": Board, "black": Player, "white": Player}
 _sessions_lock = threading.Lock()
 # M0 单进程假设，粗粒度锁防并发落子竞态
+
+QTABLE_PATH = "runs/e0-stage2/qtable.json"
 
 _RESULT = {BLACK: "black_win", WHITE: "white_win", 3: "draw"}
 
@@ -26,6 +29,12 @@ def _make_player(kind: str) -> Player:
         return HumanPlayer()
     if kind.startswith("minimax-"):
         return MinimaxPlayer(level=kind.removeprefix("minimax-"))
+    if kind == "qtable":
+        p = pathlib.Path(QTABLE_PATH)
+        if not p.exists():
+            raise ValueError(
+                f"Q 表不存在：{QTABLE_PATH}（先运行 scripts/train_tabular.py 训练）")
+        return QTablePlayer(str(p))
     raise ValueError(f"unknown player kind: {kind}")
 
 
@@ -35,6 +44,7 @@ def _state(game_id: int) -> dict:
     line = b.winning_line()
     return {
         "game_id": game_id,
+        "size": b.size,
         "board": b.grid.tolist(),
         "current_player": b.current_player,
         "last_move": list(b.last_move) if b.last_move else None,
@@ -70,6 +80,7 @@ def _play_one_ai_move(game_id: int) -> bool:
 class NewGameReq(BaseModel):
     black: str = "human"
     white: str = "minimax-hard"
+    size: int = 15
 
 
 class MoveReq(BaseModel):
@@ -84,14 +95,18 @@ class GameIdReq(BaseModel):
 
 @app.post("/api/new")
 def new_game(req: NewGameReq):
+    if req.size not in (3, 15):
+        raise HTTPException(status_code=400, detail="size 仅支持 3 或 15")
+    if "qtable" in (req.black, req.white) and req.size != 3:
+        raise HTTPException(status_code=400, detail="qtable 仅支持 3×3 对局")
     try:
         black = _make_player(req.black)
         white = _make_player(req.white)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     with _sessions_lock:
-        board = Board()
-        game_id = create_game(conn, req.black, req.white)
+        board = Board(size=req.size, win_len=3 if req.size == 3 else 5)
+        game_id = create_game(conn, req.black, req.white, size=req.size)
         sessions[game_id] = {"board": board, "black": black, "white": white}
         _play_one_ai_move(game_id)   # 黑方是 AI 时先走一手
         _maybe_finish(game_id)
@@ -177,12 +192,14 @@ def game_record(game_id: int):
         "SELECT player, row, col FROM moves WHERE game_id = ? ORDER BY seq",
         (game_id,),
     ).fetchall()
-    board = Board()
+    size = row["size"] or 15
+    board = Board(size=size, win_len=3 if size == 3 else 5)
     for m in move_rows:
         board.play(m["row"], m["col"])   # 库中棋谱自洽，不会抛
     line = board.winning_line()
     return {
         "game_id": game_id,
+        "size": size,
         "black_name": row["black_name"],
         "white_name": row["white_name"],
         "result": row["result"],
@@ -204,6 +221,7 @@ def game_sgf(game_id: int):
     content = build_sgf(
         row["black_name"], row["white_name"], row["result"],
         [(m["player"], m["row"], m["col"]) for m in move_rows],
+        size=row["size"] or 15,
     )
     return Response(
         content=content,
