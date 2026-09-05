@@ -10,8 +10,12 @@
 |----|----------|----------|----------|
 | 发布主干 | `main` | 永续，永远绿色（全量测试+构建通过） | — |
 | 课分支 | `course/NN-slug`，如 `course/01-dqn` | 一门课：开课 → 结课 | **结课验收通过后**整课合入 main，打 tag |
-| 实验分支 | `course/NN-slug/eN-slug`，如 `course/01-dqn/e0-tabular-q` | 一个实验 = 一次完整 brainstorm→spec→plan→SDD 流水线 | SDD 终审通过后合回**课分支** |
+| 实验分支 | `course/NN-eN-slug`，如 `course/01-e0-tabular-q` | 一个实验 = 一次完整 brainstorm→spec→plan→SDD 流水线 | SDD 终审通过后合回**课分支** |
 | 基建分支 | `feature/mN-slug`，如 `feature/m0-platform` | 平台能力（跨课共享的环境/对弈平台/训练基建） | 直接合入 main |
+
+> 命名说明：git 分支名不能嵌套（有 `course/01-dqn` 就不能有
+> `course/01-dqn/e0`），故实验分支用 `course/NN-eN-slug` 平铺命名，
+> 与课分支共享 `NN-` 前缀，`git branch --list "course/01-*"` 即可列出该课全部线。
 
 要点：
 
@@ -42,15 +46,15 @@
 ```dot
 digraph experiment {
   rankdir=TB;
-  "git checkout course/NN" [shape=box];
-  "git checkout -b course/NN/eN-slug" [shape=box];
+  "git checkout course/NN-slug" [shape=box];
+  "git checkout -b course/NN-eN-slug" [shape=box];
   "brainstorming → spec（提交在实验分支）" [shape=box];
   "writing-plans → plan（提交在实验分支）" [shape=box];
   "subagent-driven-development 执行" [shape=box];
   "全分支终审 + 修复" [shape=box];
   "实验笔记 + 归档" [shape=box];
-  "merge --no-ff 回 course/NN，删实验分支" [shape=box];
-  "course/NN" -> "eN 分支" -> "spec" -> "plan" -> "SDD" -> "终审" -> "笔记" -> "回课分支";
+  "merge --no-ff 回 course/NN-slug，删实验分支" [shape=box];
+  "course/NN-slug" -> "eN 分支" -> "spec" -> "plan" -> "SDD" -> "终审" -> "笔记" -> "回课分支";
 }
 ```
 
@@ -61,5 +65,5 @@ digraph experiment {
 ## 4. 当前对照
 
 - M0/M1：基建分支 → main ✓（历史合流，符合本 SOP 的基建路线）
-- 课 01：课分支 `course/01-dqn`（自 main 拉出），
-  第一刀实验分支 `course/01-dqn/e0-tabular-q` 执行中
+- 课 01：第一刀实验分支 `course/01-e0-tabular-q`（自 main 拉出）执行中；
+  E0 合并时创建课分支 `course/01-dqn`，此后各刀从课分支拉出
