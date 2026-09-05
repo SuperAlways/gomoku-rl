@@ -49,14 +49,16 @@ def test_anti_diagonal_win():
 
 
 def test_draw_full_board():
-    # 颜色 = (r//2 + c) % 2：行内相邻异色、列内同色最多连 2、
-    # 两个对角方向同色最多连 2 —— 全盘不存在任何方向五连。
-    # 黑格恰 113 个 = 黑方手数（先手 113 手），白格 112 个。
-    b = Board()
+    # 配色 (r//2+c)%2：行内相邻异色、列内同色最多连 2、两斜同色最多连 2 ——
+    # 全盘无任何方向五连。黑格恰 113 个 = 先手手数。
+    # 落子顺序按"黑白格逐对交替"构造，使 play() 的轮流机制恰好复现该配色。
     black_cells = [(r, c) for r in range(15) for c in range(15) if (r // 2 + c) % 2 == 0]
     white_cells = [(r, c) for r in range(15) for c in range(15) if (r // 2 + c) % 2 == 1]
     assert len(black_cells) == 113 and len(white_cells) == 112
-    for r, c in black_cells + white_cells:  # play() 自动交替黑白
+    b = Board()
+    order = [cell for pair in zip(black_cells, white_cells) for cell in pair]
+    order.append(black_cells[-1])
+    for r, c in order:
         b.play(r, c)
     assert b.winner == DRAW and len(b.history) == 225
 
