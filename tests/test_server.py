@@ -13,15 +13,28 @@ def test_new_game_human_vs_ai():
     assert len(s["board"]) == 15 and len(s["board"][0]) == 15
 
 
-def test_human_move_then_ai_reply():
+def test_human_move_single_ply():
     r = client.post("/api/new", json={"black": "human", "white": "minimax-easy"})
     gid = r.json()["game_id"]
     r = client.post("/api/move", json={"game_id": gid, "row": 7, "col": 7})
     assert r.status_code == 200
     s = r.json()
     assert s["board"][7][7] == 1
-    assert len(s["moves"]) >= 2          # 人 + AI 应手
-    assert s["board"][s["moves"][-1][1]][s["moves"][-1][2]] == 2
+    assert len(s["moves"]) == 1            # 只走人这一手
+    assert s["current_player"] == 2
+    # AI 应手改由 /api/ai-move 驱动
+    s = client.post("/api/ai-move", json={"game_id": gid}).json()
+    assert len(s["moves"]) == 2 and s["current_player"] == 1
+
+
+def test_win_line_field():
+    r = client.post("/api/new", json={"black": "human", "white": "human"})
+    gid = r.json()["game_id"]
+    for row, col in [(7, 4), (8, 0), (7, 5), (8, 1), (7, 6), (8, 2), (7, 7), (8, 3), (7, 8)]:
+        s = client.post("/api/move", json={"game_id": gid, "row": row, "col": col}).json()
+    assert s["game_over"] and s["winner"] == 1
+    assert len(s["win_line"]) == 5
+    assert [7, 8] in s["win_line"] and [7, 4] in s["win_line"]
 
 
 def test_invalid_move_400():

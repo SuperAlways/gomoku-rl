@@ -28,6 +28,7 @@ def _make_player(kind: str) -> Player:
 def _state(game_id: int) -> dict:
     s = sessions[game_id]
     b = s["board"]
+    line = b.winning_line()
     return {
         "game_id": game_id,
         "board": b.grid.tolist(),
@@ -35,6 +36,7 @@ def _state(game_id: int) -> dict:
         "last_move": list(b.last_move) if b.last_move else None,
         "winner": b.winner,
         "game_over": b.game_over,
+        "win_line": [[r, c] for r, c in line] if line else None,
         "moves": [[p, r, c] for p, r, c in b.history],
     }
 
@@ -107,7 +109,6 @@ def move(req: MoveReq):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     record_move(conn, req.game_id, board.history[-1])
-    _play_one_ai_move(req.game_id)   # AI 应手
     _maybe_finish(req.game_id)
     return _state(req.game_id)
 
