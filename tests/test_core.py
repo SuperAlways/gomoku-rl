@@ -117,3 +117,20 @@ def test_invalid_moves():
         b2.play(r, c)
     with pytest.raises(ValueError):
         b2.play(0, 0)     # 终局后
+
+
+def test_winning_line_horizontal():
+    b = Board()
+    for r, c in [(7, 4), (8, 0), (7, 5), (8, 1), (7, 6), (8, 2), (7, 7), (8, 3), (7, 8)]:
+        b.play(r, c)
+    line = b.winning_line()
+    assert line is not None and len(line) == 5
+    assert (7, 8) in line and (7, 4) in line
+    assert all(r == 7 for r, _ in line)
+
+
+def test_winning_line_none_midgame():
+    b = Board()
+    b.play(7, 7)
+    b.play(7, 8)
+    assert b.winning_line() is None

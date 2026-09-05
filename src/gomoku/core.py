@@ -85,3 +85,22 @@ class Board:
             if count >= 5:
                 return True
         return False
+
+    def winning_line(self) -> list[tuple[int, int]] | None:
+        """获胜五连坐标（含最后一手的一段 5 格）；未终局或平局返回 None"""
+        if not self.game_over or self.winner == DRAW:
+            return None
+        row, col = self.last_move
+        player = self.winner
+        for dr, dc in _DIRS:
+            cells = [(row, col)]
+            for sign in (1, -1):
+                r, c = row + sign * dr, col + sign * dc
+                while 0 <= r < self.size and 0 <= c < self.size \
+                        and self.grid[r, c] == player:
+                    cells.append((r, c))
+                    r += sign * dr
+                    c += sign * dc
+            if len(cells) >= 5:
+                return cells[:5]
+        return None
