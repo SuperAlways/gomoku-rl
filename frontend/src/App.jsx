@@ -22,6 +22,7 @@ export default function App() {
   const [game, setGame] = useState(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
+  const [showRematch, setShowRematch] = useState(false);
   const toastTimer = useRef(null);
 
   const showToast = (msg) => {
@@ -58,6 +59,13 @@ export default function App() {
     }, 400);
     return () => clearTimeout(t);
   }, [game]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 终局 30 秒后提示重开（含平局）
+  useEffect(() => {
+    if (!game?.game_over) { setShowRematch(false); return; }
+    const t = setTimeout(() => setShowRematch(true), 30_000);
+    return () => clearTimeout(t);
+  }, [game]);
 
   if (!game) {
     return (
@@ -97,8 +105,15 @@ export default function App() {
         <span>第 {game.moves.length} 手</span>
         <button onClick={() => setGame(null)}>重新开局</button>
       </div>
-      <Board grid={game.board} lastMove={game.last_move} onPlay={play}
-             locked={busy || game.game_over || !humanTurn} />
+      <Board grid={game.board} lastMove={game.last_move} winLine={game.win_line}
+             onPlay={play} locked={busy || game.game_over || !humanTurn} />
+      {game.game_over && showRematch && (
+        <div className="rematch-bar">
+          <span>再来一局？</span>
+          <button onClick={() => setGame(null)}>重开一局</button>
+          <button onClick={() => setShowRematch(false)}>继续看</button>
+        </div>
+      )}
       <div className="toolbar">
         {PENDING.map(([label, milestone]) => (
           <button key={label} className="pending"

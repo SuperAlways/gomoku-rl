@@ -9,7 +9,12 @@ function xyToRC(x, y) {
   return [r, c];
 }
 
-export default function Board({ grid, lastMove, onPlay, locked }) {
+export default function Board({ grid, lastMove, winLine, onPlay, locked }) {
+  const winIndex = new Map();
+  if (winLine) {
+    winLine.forEach(([r, c], i) => winIndex.set(r + "-" + c, i));
+  }
+
   const handleClick = (e) => {
     if (locked) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -40,8 +45,19 @@ export default function Board({ grid, lastMove, onPlay, locked }) {
       {grid.map((row, r) =>
         row.map((v, c) =>
           v === 0 ? null : (
-            <circle key={r + "-" + c} cx={PAD + c * CELL} cy={PAD + r * CELL}
-                    r={CELL * 0.42} fill={v === 1 ? "#111" : "#fff"} stroke="#555" />
+            (() => {
+              const key = r + "-" + c;
+              const winIdx = winIndex.get(key);
+              return (
+                <circle key={key} cx={PAD + c * CELL} cy={PAD + r * CELL}
+                        r={CELL * 0.42}
+                        className={winIdx !== undefined ? "stone-win" : undefined}
+                        opacity={winIndex.size && winIdx === undefined ? 0.45 : 1}
+                        style={winIdx !== undefined
+                          ? { animationDelay: `${winIdx * 0.15}s` } : undefined}
+                        fill={v === 1 ? "#111" : "#fff"} stroke="#555" />
+              );
+            })()
           )
         )
       )}
