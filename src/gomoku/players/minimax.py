@@ -32,13 +32,11 @@ def _view(line: str, player: int) -> str:
 
 
 def _score_line(line: str) -> int:
-    total = 0
     for score, pats in PATTERNS:
         for p in pats:
             if p in line:
-                total += score * line.count(p)
-                break
-    return total
+                return score * line.count(p)
+    return 0
 
 
 def _all_lines(board: Board) -> list[str]:
