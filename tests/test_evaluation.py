@@ -15,7 +15,7 @@ def test_empty_board_eval_zero():
 
 def test_live_three_detected():
     # 黑活三 (7,6)(7,7)(7,8)；白子三颗分散，不构成棋型
-    b = _board_from([(7, 6), (1, 1), (7, 7), (3, 3), (7, 8), (5, 5)])
+    b = _board_from([(7, 6), (1, 2), (7, 7), (3, 5), (7, 8), (5, 1)])
     score_black = evaluate(b, BLACK)
     assert score_black >= 10_000          # 至少一个活三
     assert score_black > evaluate(b, 2)   # 黑方视角优于白方
@@ -28,7 +28,7 @@ def test_single_stones_score_zero():
 
 
 def test_point_score_ranks_extension():
-    b = _board_from([(7, 6), (1, 1), (7, 7), (3, 3), (7, 8), (5, 5)])
+    b = _board_from([(7, 6), (1, 2), (7, 7), (3, 5), (7, 8), (5, 1)])
     assert point_score(b, 7, 5, BLACK) >= 10_000     # 活三延伸点
     assert point_score(b, 7, 9, BLACK) >= 10_000     # 另一端
     assert point_score(b, 12, 12, BLACK) < 1_000     # 无关点
