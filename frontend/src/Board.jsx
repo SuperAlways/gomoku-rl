@@ -1,15 +1,19 @@
-const N = 15, CELL = 36, PAD = 24, SIZE = PAD * 2 + CELL * (N - 1);
+export default function Board({ grid, lastMove, winLine, onPlay, locked, size = 15 }) {
+  const N = size;
+  const CELL = size === 3 ? 64 : 36;
+  const PAD = size === 3 ? 40 : 24;
+  const SIZE = PAD * 2 + CELL * (N - 1);
+  const stars = N === 15 ? [[3, 3], [3, 11], [11, 3], [11, 11], [7, 7]] : [];
 
-function xyToRC(x, y) {
-  const c = Math.round((x - PAD) / CELL);
-  const r = Math.round((y - PAD) / CELL);
-  if (r < 0 || r >= N || c < 0 || c >= N) return null;
-  const px = PAD + c * CELL, py = PAD + r * CELL;
-  if (Math.hypot(x - px, y - py) > CELL * 0.45) return null;
-  return [r, c];
-}
+  const xyToRC = (x, y) => {
+    const c = Math.round((x - PAD) / CELL);
+    const r = Math.round((y - PAD) / CELL);
+    if (r < 0 || r >= N || c < 0 || c >= N) return null;
+    const px = PAD + c * CELL, py = PAD + r * CELL;
+    if (Math.hypot(x - px, y - py) > CELL * 0.45) return null;
+    return [r, c];
+  };
 
-export default function Board({ grid, lastMove, winLine, onPlay, locked }) {
   const winIndex = new Map();
   if (winLine) {
     winLine.forEach(([r, c], i) => winIndex.set(r + "-" + c, i));
@@ -31,7 +35,6 @@ export default function Board({ grid, lastMove, winLine, onPlay, locked }) {
             stroke="#8a6d3b" strokeWidth="1" />
     );
   }
-  const stars = [[3, 3], [3, 11], [11, 3], [11, 11], [7, 7]];
 
   return (
     <svg data-testid="board" width={SIZE} height={SIZE} onClick={handleClick}
