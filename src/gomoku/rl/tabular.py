@@ -81,15 +81,12 @@ def td_backfill(q: dict, trajectory: list[tuple[bytes, int]], reward: float,
     errs = []
     target = reward
     for key, action in reversed(trajectory):
-        # Ensure state exists in Q table
-        if key not in q:
-            q[key] = np.zeros(len(key[:-1]))
         errs.append(abs(target - q[key][action]))
         q[key][action] += lr * (target - q[key][action])
         grid = np.frombuffer(key[:-1], dtype=np.int8)
         legal = np.flatnonzero(grid == 0)
         target = gamma * float(np.max(q[key][legal]))
-    return errs[::-1][::-1]
+    return errs
 
 
 def policy_entropy(q_values: np.ndarray, legal: np.ndarray,

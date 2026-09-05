@@ -71,7 +71,7 @@ def test_policy_entropy_uniform_and_peaked():
 
 def test_td_backfill_values():
     s = np.zeros((3, 3), np.int8).tobytes() + bytes([BLACK])
-    q = {}
+    q = {s: np.zeros(9)}
     errs = td_backfill(q, [(s, 0), (s, 8)], reward=1.0, gamma=0.99, lr=0.5)
     assert q[s][8] == pytest.approx(0.5)                  # 终局手：0 + 0.5*(1-0)
     assert q[s][0] == pytest.approx(0.5 * 0.99 * 0.5)     # γ·max(合法 Q[s']) = 0.495
