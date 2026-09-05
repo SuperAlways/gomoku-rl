@@ -75,7 +75,7 @@ def test_td_backfill_values():
     errs = td_backfill(q, [(s, 0), (s, 8)], reward=1.0, gamma=0.99, lr=0.5)
     assert q[s][8] == pytest.approx(0.5)                  # 终局手：0 + 0.5*(1-0)
     assert q[s][0] == pytest.approx(0.5 * 0.99 * 0.5)     # γ·max(合法 Q[s']) = 0.495
-    assert errs == [pytest.approx(1.0), pytest.approx(1.0)]
+    assert errs == [pytest.approx(1.0), pytest.approx(0.495)]
 
 
 def test_train_smoke_beats_random():
