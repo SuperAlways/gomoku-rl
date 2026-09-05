@@ -93,3 +93,80 @@ def test_games_list():
 def test_new_game_rejects_unknown_kind():
     r = client.post("/api/new", json={"black": "gpt-5", "white": "human"})
     assert r.status_code == 400
+
+
+def test_undo_round():
+    r = client.post("/api/new", json={"black": "human", "white": "minimax-easy"})
+    gid = r.json()["game_id"]
+    client.post("/api/move", json={"game_id": gid, "row": 7, "col": 7})
+    client.post("/api/ai-move", json={"game_id": gid})
+    client.post("/api/move", json={"game_id": gid, "row": 8, "col": 8})
+    s = client.post("/api/ai-move", json={"game_id": gid}).json()
+    assert len(s["moves"]) == 4
+    r = client.post("/api/undo", json={"game_id": gid})
+    assert r.status_code == 200
+    s = r.json()
+    assert len(s["moves"]) == 2
+    assert s["current_player"] == 1
+    assert sum(v != 0 for row in s["board"] for v in row) == 2
+    # 库中行数同步
+    (n,) = app_module.conn.execute(
+        "SELECT COUNT(*) FROM moves WHERE game_id = ?", (gid,)
+    ).fetchone()
+    assert n == 2
+    # 再悔一轮归零
+    s = client.post("/api/undo", json={"game_id": gid}).json()
+    assert s["moves"] == [] and s["current_player"] == 1
+    # 空局再悔 → 400
+    assert client.post("/api/undo", json={"game_id": gid}).status_code == 400
+
+
+def test_undo_rejects():
+    # 终局 400
+    r = client.post("/api/new", json={"black": "human", "white": "human"})
+    gid = r.json()["game_id"]
+    for row, col in [(7, 4), (8, 0), (7, 5), (8, 1), (7, 6),
+                     (8, 2), (7, 7), (8, 3), (7, 8)]:
+        s = client.post("/api/move", json={"game_id": gid, "row": row, "col": col}).json()
+    assert s["game_over"]
+    assert client.post("/api/undo", json={"game_id": gid}).status_code == 400
+    # 机机局 400
+    r = client.post("/api/new", json={"black": "minimax-easy", "white": "minimax-easy"})
+    gid2 = r.json()["game_id"]
+    assert client.post("/api/undo", json={"game_id": gid2}).status_code == 400
+    # hvA 仅 AI 先手一手（无可悔）400
+    r = client.post("/api/new", json={"black": "minimax-easy", "white": "human"})
+    gid3 = r.json()["game_id"]
+    assert client.post("/api/undo", json={"game_id": gid3}).status_code == 400
+    # 404
+    assert client.post("/api/undo", json={"game_id": 99999}).status_code == 404
+
+
+def test_record_endpoint():
+    assert client.get("/api/games/99999/record").status_code == 404
+    r = client.post("/api/new", json={"black": "human", "white": "human"})
+    gid = r.json()["game_id"]
+    for row, col in [(7, 4), (8, 0), (7, 5), (8, 1), (7, 6),
+                     (8, 2), (7, 7), (8, 3), (7, 8)]:
+        client.post("/api/move", json={"game_id": gid, "row": row, "col": col})
+    rec = client.get(f"/api/games/{gid}/record").json()
+    assert rec["black_name"] == "human" and rec["white_name"] == "human"
+    assert rec["result"] == "black_win" and rec["total_moves"] == 9
+    assert len(rec["moves"]) == 9 and rec["moves"][0] == [1, 7, 4]
+    assert len(rec["win_line"]) == 5 and [7, 8] in rec["win_line"]
+
+
+def test_sgf_endpoint():
+    assert client.get("/api/games/99999/sgf").status_code == 404
+    r = client.post("/api/new", json={"black": "human", "white": "human"})
+    gid = r.json()["game_id"]
+    for row, col in [(7, 4), (8, 0), (7, 5), (8, 1), (7, 6),
+                     (8, 2), (7, 7), (8, 3), (7, 8)]:
+        client.post("/api/move", json={"game_id": gid, "row": row, "col": col})
+    r = client.get(f"/api/games/{gid}/sgf")
+    assert r.status_code == 200
+    assert "attachment" in r.headers["content-disposition"]
+    assert "gomoku-" in r.headers["content-disposition"]
+    assert r.headers["content-type"].startswith("text/x-sgf")
+    assert "SZ[15]" in r.text and ";B[he]" in r.text and ";W[ia]" in r.text
+    assert r.text.count(";B[") == 5 and r.text.count(";W[") == 4

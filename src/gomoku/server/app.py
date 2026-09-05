@@ -1,7 +1,7 @@
 import pathlib
 import threading
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -10,6 +10,7 @@ from gomoku.db import connect, create_game, record_move, finish_game, list_games
 from gomoku.players.base import Player
 from gomoku.players.human import HumanPlayer
 from gomoku.players.minimax import MinimaxPlayer
+from gomoku.sgf import build_sgf
 
 app = FastAPI(title="gomoku-rl")
 conn = connect(check_same_thread=False)
@@ -131,6 +132,84 @@ def ai_move(req: GameIdReq):
 @app.get("/api/games")
 def games():
     return list_games(conn)
+
+
+@app.post("/api/undo")
+def undo(req: GameIdReq):
+    with _sessions_lock:
+        if req.game_id not in sessions:
+            raise HTTPException(status_code=404, detail="game not found")
+        s = sessions[req.game_id]
+        board = s["board"]
+        if board.game_over:
+            raise HTTPException(status_code=400, detail="game is over")
+        current = s["black"] if board.current_player == BLACK else s["white"]
+        both_human = (isinstance(s["black"], HumanPlayer)
+                      and isinstance(s["white"], HumanPlayer))
+        if both_human:
+            if not board.history:
+                raise HTTPException(status_code=400, detail="nothing to undo")
+            n = 1
+        elif isinstance(s["black"], HumanPlayer) or isinstance(s["white"], HumanPlayer):
+            if not isinstance(current, HumanPlayer):
+                raise HTTPException(status_code=400, detail="not human's turn")
+            if len(board.history) < 2:
+                raise HTTPException(status_code=400, detail="nothing to undo")
+            n = 2
+        else:
+            raise HTTPException(status_code=400, detail="no human in game")
+        for _ in range(n):
+            board.undo()
+        conn.execute(
+            "DELETE FROM moves WHERE game_id = ? AND seq > ?",
+            (req.game_id, len(board.history)),
+        )
+        conn.commit()
+        return _state(req.game_id)
+
+
+@app.get("/api/games/{game_id}/record")
+def game_record(game_id: int):
+    row = conn.execute("SELECT * FROM games WHERE id = ?", (game_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="game not found")
+    move_rows = conn.execute(
+        "SELECT player, row, col FROM moves WHERE game_id = ? ORDER BY seq",
+        (game_id,),
+    ).fetchall()
+    board = Board()
+    for m in move_rows:
+        board.play(m["row"], m["col"])   # 库中棋谱自洽，不会抛
+    line = board.winning_line()
+    return {
+        "game_id": game_id,
+        "black_name": row["black_name"],
+        "white_name": row["white_name"],
+        "result": row["result"],
+        "total_moves": row["total_moves"],
+        "moves": [[m["player"], m["row"], m["col"]] for m in move_rows],
+        "win_line": [[r, c] for r, c in line] if line else None,
+    }
+
+
+@app.get("/api/games/{game_id}/sgf")
+def game_sgf(game_id: int):
+    row = conn.execute("SELECT * FROM games WHERE id = ?", (game_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="game not found")
+    move_rows = conn.execute(
+        "SELECT player, row, col FROM moves WHERE game_id = ? ORDER BY seq",
+        (game_id,),
+    ).fetchall()
+    content = build_sgf(
+        row["black_name"], row["white_name"], row["result"],
+        [(m["player"], m["row"], m["col"]) for m in move_rows],
+    )
+    return Response(
+        content=content,
+        media_type="text/x-sgf",
+        headers={"Content-Disposition": f'attachment; filename="gomoku-{game_id}.sgf"'},
+    )
 
 
 # 生产模式：挂载前端构建产物（frontend/dist 存在时生效）

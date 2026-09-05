@@ -72,3 +72,12 @@ select {
   border: 1px solid #ffd700;
   border-radius: 8px;
 }
+table.history {
+  margin-top: 16px;
+  border-collapse: collapse;
+}
+table.history th, table.history td {
+  border: 1px solid #8a6d3b;
+  padding: 6px 12px;
+  font-size: 13px;
+}
