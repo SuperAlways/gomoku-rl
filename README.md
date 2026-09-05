@@ -61,7 +61,7 @@ A hands-on RL project built around Gomoku (Five-in-a-Row): build the environment
 
 ## 路线图
 
-- [ ] **M0** 五子棋环境 + Minimax 专家系统 + Web UI（人 vs 专家）
+- [x] **M0** 五子棋环境 + Minimax 专家系统 + Web UI（人 vs 专家）
 - [ ] **M1** 对战平台定型：Player 接口 / Arena / 棋谱存档回放 / 权重加载
 - [ ] **M2** DQN agent：replay buffer、target network、对手池
 - [ ] **M3** REINFORCE → baseline → A2C：亲眼看方差爆炸与它的解药
