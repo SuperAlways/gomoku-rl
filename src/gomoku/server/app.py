@@ -78,17 +78,16 @@ class GameIdReq(BaseModel):
 
 @app.post("/api/new")
 def new_game(req: NewGameReq):
-    board = Board()
-    game_id = create_game(conn, req.black, req.white)
     try:
-        sessions[game_id] = {
-            "board": board,
-            "black": _make_player(req.black),
-            "white": _make_player(req.white),
-        }
+        black = _make_player(req.black)
+        white = _make_player(req.white)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    board = Board()
+    game_id = create_game(conn, req.black, req.white)
+    sessions[game_id] = {"board": board, "black": black, "white": white}
     _play_one_ai_move(game_id)   # 黑方是 AI 时先走一手
+    _maybe_finish(game_id)
     return _state(game_id)
 
 

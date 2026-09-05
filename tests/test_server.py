@@ -48,3 +48,8 @@ def test_games_list():
     r = client.get("/api/games")
     assert r.status_code == 200
     assert isinstance(r.json(), list)
+
+
+def test_new_game_rejects_unknown_kind():
+    r = client.post("/api/new", json={"black": "gpt-5", "white": "human"})
+    assert r.status_code == 400
