@@ -45,19 +45,31 @@ A hands-on RL project built around Gomoku (Five-in-a-Row): build the environment
 
 专家系统（Minimax）与 RL agent 是平级的 Player。它既是开局第一个对手，也是衡量所有 RL 进步的**固定标尺**——自对弈的对手一直在变，但专家系统不变，定期和它打基准赛才能发现"自对弈胜率涨了、对固定对手却退化"这类经典陷阱。
 
-## 课程线（每课一个 git tag）
+## 课程线（每课两个锚点 tag）
 
-| 课 | 标题——每一课回答一个核心问题 | 对应课程章节 |
-|---|---|---|
-| 01 | 环境与专家系统——怎样把五子棋形式化成 MDP？ | ch03 MDP |
-| 02 | DQN——当对手是会进步的自己，Q-learning 还成立吗？ | ch04 DQN |
-| 03 | REINFORCE → A2C——稀疏奖励下策略梯度的方差有多大？ | ch05/06 |
-| 04 | PPO——自对弈训练怎样才能稳定？ | ch07 PPO |
-| 05 | AlphaZero——搜索与学习如何合流？ | ch32 自博弈 |
-| 06 | 评估——为什么训练曲线会骗人？ | appendix |
-| 附 | 踩坑附录：非平稳性 / 自对弈循环 / reward shaping 副作用 | common pitfalls |
+| 课 | 标题——每一课回答一个核心问题 | 对应课程章节 | 洁净空间 | 成品 |
+|---|---|---|---|---|
+| 01 | 环境与专家系统——怎样把五子棋形式化成 MDP？ | ch03 MDP | `course/01-start` | `course/01` |
+| 02 | DQN——当对手是会进步的自己，Q-learning 还成立吗？ | ch04 DQN | — | — |
+| 03 | REINFORCE → A2C——稀疏奖励下策略梯度的方差有多大？ | ch05/06 | — | — |
+| 04 | PPO——自对弈训练怎样才能稳定？ | ch07 PPO | — | — |
+| 05 | AlphaZero——搜索与学习如何合流？ | ch32 自博弈 | — | — |
+| 06 | 评估——为什么训练曲线会骗人？ | appendix | — | — |
+| 附 | 踩坑附录：非平稳性 / 自对弈循环 / reward shaping 副作用 | common pitfalls | — | — |
 
 每课固定结构：问题引入 → 实现（关键代码讲解）→ 动手实验（附"你应该会看到"的预期现象）→ 踩坑记录 → 与原课程的概念映射 → 基准赛考试。
+
+### 如何跟随一门课
+
+每门课在 git 历史上有两个锚点 tag：
+
+- **`course/NN-start`（洁净空间）**：该课动工前的代码。clone 后
+  `git checkout course/01-start`，跟着教程逐实验亲手重建——推荐的学习方式；
+- **`course/NN`（结课成品）**：该课全部实验完成并通过结课考试后的代码。
+
+每课由若干实验组成，每个实验以一个 `--no-ff` merge commit 的形式叠加在 main
+上——想看"某个实验刚完成时代码长什么样"，checkout 那个 merge commit 即可。
+分支与 tag 的完整规则见 `docs/course/branching-sop.md`。
 
 ## 路线图
 

@@ -81,3 +81,4 @@ table.history th, table.history td {
   padding: 6px 12px;
   font-size: 13px;
 }
+.mode-row { display: flex; gap: 16px; margin: 8px 0; }

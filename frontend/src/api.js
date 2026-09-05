@@ -21,7 +21,7 @@ async function get(path) {
 }
 
 export const api = {
-  newGame: (black, white) => post("/api/new", { black, white }),
+  newGame: (black, white, size = 15) => post("/api/new", { black, white, size }),
   move: (gameId, row, col) => post("/api/move", { game_id: gameId, row, col }),
   aiMove: (gameId) => post("/api/ai-move", { game_id: gameId }),
   undo: (gameId) => post("/api/undo", { game_id: gameId }),

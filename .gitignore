@@ -8,3 +8,4 @@ gomoku.db
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+runs/

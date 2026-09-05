@@ -14,12 +14,14 @@ const PENDING = [
 ];
 
 function labelOf(kind) {
-  return OPTIONS.find((o) => o.value === kind)?.label ?? kind;
+  return OPTIONS.find((o) => o.value === kind)?.label
+    ?? ({ qtable: "九宫格·Q表" }[kind] ?? kind);
 }
 
 export default function App() {
   const [view, setView] = useState("config");   // config | game | history | replay
   const [config, setConfig] = useState({ black: "human", white: "minimax-hard" });
+  const [mode, setMode] = useState("standard");   // standard | qtable3
   const [game, setGame] = useState(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
@@ -37,7 +39,12 @@ export default function App() {
   const start = async () => {
     setBusy(true);
     try {
-      setGame(await api.newGame(config.black, config.white));
+      if (mode === "qtable3") {
+        setConfig({ black: "qtable", white: "human" });
+        setGame(await api.newGame("qtable", "human", 3));
+      } else {
+        setGame(await api.newGame(config.black, config.white, 15));
+      }
       setView("game");
     } catch (e) { showToast(e.message); }
     finally { setBusy(false); }
@@ -150,7 +157,25 @@ export default function App() {
       <div className="setup">
         <h1>gomoku-rl</h1>
         <p>五子棋强化学习实战 · M0</p>
-        {["black", "white"].map((side) => (
+        <div className="mode-row">
+          <label>
+            <input type="radio" name="mode" checked={mode === "standard"}
+                   onChange={() => {
+                     setMode("standard");
+                     if (config.black === "qtable") {
+                       setConfig({ black: "human", white: "minimax-hard" });
+                     }
+                   }} />
+            标准 15×15
+          </label>
+          <label>
+            <input type="radio" name="mode" checked={mode === "qtable3"}
+                   onChange={() => setMode("qtable3")} />
+            九宫格·Q表（3×3，E0）
+          </label>
+        </div>
+        {mode === "qtable3" && <p>黑方：九宫格·Q表 AI　白方：玩家</p>}
+        {mode === "standard" && ["black", "white"].map((side) => (
           <label key={side}>
             {side === "black" ? "黑方" : "白方"}：
             <select value={config[side]}
@@ -190,7 +215,8 @@ export default function App() {
         <button onClick={backToConfig}>重新开局</button>
       </div>
       <Board grid={game.board} lastMove={game.last_move} winLine={game.win_line}
-             onPlay={play} locked={busy || game.game_over || !humanTurn} />
+             onPlay={play} locked={busy || game.game_over || !humanTurn}
+             size={config.black === "qtable" ? 3 : 15} />
       {game.game_over && showRematch && (
         <div className="rematch-bar">
           <span>再来一局？</span>

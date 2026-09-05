@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import Board from "./Board";
 
-function buildGrid(moves, ply) {
-  const grid = Array.from({ length: 15 }, () => Array(15).fill(0));
+function buildGrid(moves, ply, size) {
+  const grid = Array.from({ length: size }, () => Array(size).fill(0));
   for (let i = 0; i < ply; i++) {
     const [p, r, c] = moves[i];
     grid[r][c] = p;
@@ -12,6 +12,7 @@ function buildGrid(moves, ply) {
 
 export default function Replay({ record, onBack }) {
   const { moves, win_line, black_name, white_name, result } = record;
+  const size = record.size ?? 15;
   const [ply, setPly] = useState(0);
   const [playing, setPlaying] = useState(false);
   const timer = useRef(null);
@@ -40,8 +41,8 @@ export default function Replay({ record, onBack }) {
       <div className="status">
         {black_name} vs {white_name} · {result} · 第 {ply} / {moves.length} 手
       </div>
-      <Board grid={buildGrid(moves, ply)} lastMove={last} winLine={showWin}
-             onPlay={() => {}} locked />
+      <Board grid={buildGrid(moves, ply, size)} lastMove={last} winLine={showWin}
+             onPlay={() => {}} locked size={size} />
       <div className="toolbar">
         <button onClick={() => setPly((p) => Math.max(0, p - 1))}
                 disabled={playing || ply === 0}>上一手</button>

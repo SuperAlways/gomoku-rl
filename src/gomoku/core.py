@@ -10,15 +10,16 @@ _DIRS = ((0, 1), (1, 0), (1, 1), (1, -1))
 
 
 class Board:
-    """15×15 无禁手五子棋棋盘：规则内核，唯一的状态权威。
+    """无禁手五子棋棋盘（默认 15×15 连五，可缩小为 3×3 连三等）：规则内核，唯一的状态权威。
 
-    grid: int8 (15,15)，0 空 / 1 黑 / 2 白
+    grid: int8 (size, size)，0 空 / 1 黑 / 2 白
     history: [(player, row, col), ...] 落子序
     winner: 0 进行中 / 1 黑 / 2 白 / 3 平局（终局时 current_player 停在胜者/最后一手方）
     """
 
-    def __init__(self, size: int = BOARD_SIZE):
+    def __init__(self, size: int = BOARD_SIZE, win_len: int = 5):
         self.size = size
+        self.win_len = win_len
         self.grid = np.zeros((size, size), dtype=np.int8)
         self.current_player = BLACK
         self.winner = EMPTY
@@ -40,7 +41,7 @@ class Board:
         self.grid[row, col] = player
         self.history.append((player, row, col))
         self.last_move = (row, col)
-        if self._has_five(row, col, player):
+        if self._has_line(row, col, player):
             self.winner = player
         elif len(self.history) == self.size * self.size:
             self.winner = DRAW
@@ -72,7 +73,7 @@ class Board:
             (self.grid == 3 - player).astype(np.float32),
         ])
 
-    def _has_five(self, row: int, col: int, player: int) -> bool:
+    def _has_line(self, row: int, col: int, player: int) -> bool:
         # 只以最后一手为中心查 4 方向，不做全盘扫描
         for dr, dc in _DIRS:
             count = 1
@@ -82,7 +83,7 @@ class Board:
                     count += 1
                     r += sign * dr
                     c += sign * dc
-            if count >= 5:
+            if count >= self.win_len:
                 return True
         return False
 
@@ -101,6 +102,6 @@ class Board:
                     cells.append((r, c))
                     r += sign * dr
                     c += sign * dc
-            if len(cells) >= 5:
-                return cells[:5]
+            if len(cells) >= self.win_len:
+                return cells[:self.win_len]
         return None

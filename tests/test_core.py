@@ -134,3 +134,22 @@ def test_winning_line_none_midgame():
     b.play(7, 7)
     b.play(7, 8)
     assert b.winning_line() is None
+
+
+def test_3x3_horizontal_win():
+    b = Board(size=3, win_len=3)
+    assert b.win_len == 3
+    for r, c in [(0, 0), (1, 0), (0, 1), (1, 1), (0, 2)]:
+        b.play(r, c)
+    assert b.winner == BLACK and b.game_over
+    line = b.winning_line()
+    assert line is not None and len(line) == 3
+    assert all(r == 0 for r, _ in line)
+
+
+def test_3x3_draw_full_board():
+    # 经典和棋谱：X O X / O X X / O X O 的变体——黑白各无三连
+    b = Board(size=3, win_len=3)
+    for r, c in [(0, 0), (0, 1), (0, 2), (1, 1), (1, 0), (1, 2), (2, 1), (2, 0), (2, 2)]:
+        b.play(r, c)
+    assert b.winner == DRAW and len(b.history) == 9
