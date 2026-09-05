@@ -184,10 +184,6 @@ class MinimaxPlayer(Player):
             forced = _immediate(board)
             if forced:
                 return forced[0] * board.size + forced[1]
-        # easy 档：1 层启发式贪心（靠候选排序的防守分堵四）
-        if self.depth == 1:
-            r, c = candidates(board, limit=12)[0]
-            return r * board.size + c
         best_action, best_score = None, -10**9
         for r, c in candidates(board, limit=12):
             board.play(r, c)

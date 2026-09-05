@@ -34,8 +34,9 @@ def test_extend_live_three_all_levels():
 
 
 def test_block_rush_four_all_levels():
-    # 白有 (7,5)(7,6)(7,7) 连三 + (7,9)，轮黑：不堵 (7,8) 白下一手成五
-    b = _board_from([(1, 1), (7, 5), (3, 3), (7, 6), (5, 5), (7, 7),
+    # 黑子特意选不共线布局——若黑方自己有一手冲四，depth-1 会正确地选择对攻而非堵四
+    # 白有 (7,5)(7,6)(7,7) 连三 + (7,9)，轮黑：应堵 (7,8) 白下一手成五
+    b = _board_from([(1, 1), (7, 5), (3, 4), (7, 6), (5, 2), (7, 7),
                      (9, 9), (7, 9)])
     for level in ("easy", "medium", "hard"):
         action = MinimaxPlayer(level).select_move(b)
