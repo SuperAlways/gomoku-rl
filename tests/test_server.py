@@ -1,0 +1,50 @@
+from fastapi.testclient import TestClient
+
+from gomoku.server.app import app
+
+client = TestClient(app)
+
+
+def test_new_game_human_vs_ai():
+    r = client.post("/api/new", json={"black": "human", "white": "minimax-easy"})
+    assert r.status_code == 200
+    s = r.json()
+    assert s["current_player"] == 1 and not s["game_over"]
+    assert len(s["board"]) == 15 and len(s["board"][0]) == 15
+
+
+def test_human_move_then_ai_reply():
+    r = client.post("/api/new", json={"black": "human", "white": "minimax-easy"})
+    gid = r.json()["game_id"]
+    r = client.post("/api/move", json={"game_id": gid, "row": 7, "col": 7})
+    assert r.status_code == 200
+    s = r.json()
+    assert s["board"][7][7] == 1
+    assert len(s["moves"]) >= 2          # 人 + AI 应手
+    assert s["board"][s["moves"][-1][1]][s["moves"][-1][2]] == 2
+
+
+def test_invalid_move_400():
+    r = client.post("/api/new", json={"black": "human", "white": "minimax-easy"})
+    gid = r.json()["game_id"]
+    client.post("/api/move", json={"game_id": gid, "row": 7, "col": 7})
+    r = client.post("/api/move", json={"game_id": gid, "row": 7, "col": 7})
+    assert r.status_code == 400          # 已占用
+    r = client.post("/api/move", json={"game_id": 999999, "row": 7, "col": 7})
+    assert r.status_code == 404          # 局不存在
+
+
+def test_ai_vs_ai_via_ai_move_endpoint():
+    r = client.post("/api/new", json={"black": "minimax-easy", "white": "minimax-easy"})
+    s = r.json()
+    gid, n = s["game_id"], 0
+    while not s["game_over"] and n < 300:
+        s = client.post("/api/ai-move", json={"game_id": gid}).json()
+        n += 1
+    assert s["game_over"]
+
+
+def test_games_list():
+    r = client.get("/api/games")
+    assert r.status_code == 200
+    assert isinstance(r.json(), list)
