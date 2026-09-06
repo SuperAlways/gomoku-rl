@@ -36,3 +36,33 @@ class DQNNet(nn.Module):
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
         return self.head(self.features(obs))
+
+class ReplayBuffer:
+    """环形经验回放：存 (state, action, reward, next_state, done)，满则覆盖最旧。"""
+
+    def __init__(self, capacity: int = 500_000):
+        self.capacity = capacity
+        self.states = np.zeros((capacity, 2, SIZE, SIZE), np.float32)
+        self.actions = np.zeros(capacity, np.int64)
+        self.rewards = np.zeros(capacity, np.float32)
+        self.next_states = np.zeros((capacity, 2, SIZE, SIZE), np.float32)
+        self.dones = np.zeros(capacity, bool)
+        self.pos = 0
+        self.size = 0
+
+    def push(self, state, action, reward, next_state, done) -> None:
+        self.states[self.pos] = state
+        self.actions[self.pos] = action
+        self.rewards[self.pos] = reward
+        self.next_states[self.pos] = next_state
+        self.dones[self.pos] = done
+        self.pos = (self.pos + 1) % self.capacity
+        self.size = min(self.size + 1, self.capacity)
+
+    def sample(self, batch_size: int) -> tuple:
+        idx = np.random.randint(0, self.size, size=batch_size)
+        return (self.states[idx], self.actions[idx], self.rewards[idx],
+                self.next_states[idx], self.dones[idx])
+
+    def __len__(self) -> int:
+        return self.size
