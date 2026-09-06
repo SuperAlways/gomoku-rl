@@ -91,7 +91,7 @@ class DQNTrainer:
 
     def __init__(self, net: DQNNet, gamma: float = 0.99, lr: float = 1e-4,
                  batch_size: int = 256, target_sync_steps: int = 10_000,
-                 device: str = "cpu"):
+                 learn_every: int = 4, device: str = "cpu"):
         self.net = net.to(device)
         self.target_net = DQNNet(net.size, net.features[0].out_channels).to(device)
         self.sync_target()
@@ -100,6 +100,8 @@ class DQNTrainer:
         self.gamma = gamma
         self.batch_size = batch_size
         self.target_sync_steps = target_sync_steps
+        self.learn_every = learn_every
+        self._learn_counter = 0
         self.device = device
         self.steps_done = 0
 
@@ -119,6 +121,9 @@ class DQNTrainer:
     def train_step(self) -> float | None:
         if len(self.buffer) < self.batch_size:
             return None
+        self._learn_counter += 1
+        if self._learn_counter % self.learn_every != 0:
+            return None
         s, a, r, sn, d = self.buffer.sample(self.batch_size)
         s = torch.as_tensor(s, device=self.device)
         sn = torch.as_tensor(sn, device=self.device)
@@ -137,7 +142,8 @@ class DQNTrainer:
         loss.backward()
         self.optimizer.step()
         self.steps_done += 1
-        if self.steps_done % self.target_sync_steps == 0:
+        sync_every = max(1, self.target_sync_steps // self.learn_every)
+        if self.steps_done % sync_every == 0:
             self.sync_target()
         return float(loss.item())
 
@@ -217,16 +223,17 @@ def _run_benchmark(candidate, opponent, n: int = 20) -> float:
     return wins / n
 
 
-def _default_evaluate(trainer) -> dict:
+def _default_evaluate(trainer, n: int = 20) -> dict:
     free = lambda b: select_action(trainer.net, b, eps=0.0, device=trainer.device)
     return {
-        "win_vs_random": _run_benchmark(free, random_opponent, 20),
-        "win_vs_easy": _run_benchmark(free, make_minimax_opponent("easy"), 20),
+        "win_vs_random": _run_benchmark(free, random_opponent, n),
+        "win_vs_easy": _run_benchmark(free, make_minimax_opponent("easy"), n),
     }
 
 
 def evaluate(net: DQNNet, opponent, n: int = 20, device: str = "cpu") -> float:
     """只测不训：贪心（eps=0）打 n 局固定对手的胜率。"""
+    net.eval()
     free = lambda b: select_action(net, b, eps=0.0, device=device)
     return _run_benchmark(free, opponent, n)
 
@@ -262,6 +269,7 @@ def train(trainer, episodes_per_era: int = 20_000, num_eras: int = 60,
     out = pathlib.Path(out_dir)
     (out / "checkpoints").mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(seed)
+    np.random.seed(seed)
     opps = [random_opponent, make_minimax_opponent("easy")]   # B2：对半随机抽
     if evaluate_fn is None:
         evaluate_fn = _default_evaluate
@@ -276,7 +284,8 @@ def train(trainer, episodes_per_era: int = 20_000, num_eras: int = 60,
             candidate = lambda b: select_action(trainer.net, b, eps, device)
             info = play_episode(board, candidate, opp, trainer)
             all_steps.append(info["steps"])
-            all_loss.extend(info["losses"])
+            ep_loss = float(np.mean(info["losses"])) if info["losses"] else 0.0
+            all_loss.append(ep_loss)
         row = {
             "era": era,
             "steps": float(np.mean(all_steps[-episodes_per_era:])),
@@ -284,7 +293,7 @@ def train(trainer, episodes_per_era: int = 20_000, num_eras: int = 60,
             "entropy": opening_policy_entropy(trainer),
             "eps": eps,
         }
-        row.update(evaluate_fn(trainer))
+        row.update(evaluate_fn(trainer, eval_n))
         logs.append(row)
         with open(out / "metrics.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps(row) + "\n")

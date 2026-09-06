@@ -86,6 +86,9 @@ def test_train_step_returns_loss_and_increments():
     for _ in range(16):
         trainer.buffer.push(*([np.zeros((2, 15, 15), np.float32), 0, 0.0,
                              np.zeros((2, 15, 15), np.float32), False]))
+    # learn_every=4 节流：前 3 次返回 None，第 4 次真训
+    for _ in range(3):
+        assert trainer.train_step() is None
     loss = trainer.train_step()
     assert loss is not None and loss == loss           # 有限且非 NaN
     assert trainer.steps_done == 1
@@ -144,7 +147,7 @@ def test_play_episode_sparse_reward_terminal():
     assert info["winner"] in {1, 2, 3}
 
 
-from gomoku.rl.dqn import DQNTrainer, DQNNet, train, plot_curves
+from gomoku.rl.dqn import train, plot_curves
 
 
 def test_train_smoke_end_to_end(tmp_path):
@@ -157,7 +160,7 @@ def test_train_smoke_end_to_end(tmp_path):
                 "win_vs_random", "win_vs_easy"} <= set(m) for m in metrics)
     ckpt = tmp_path / "checkpoints" / "gen0001.pt"
     assert ckpt.exists()
-    (tmp_path / "metrics.jsonl").exists()
+    assert (tmp_path / "metrics.jsonl").exists()
 
 
 def test_plot_curves_writes_png(tmp_path):
