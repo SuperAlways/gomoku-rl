@@ -3,7 +3,7 @@ import pytest
 
 torch = pytest.importorskip("torch")   # torch 未装则整模块跳过
 
-from gomoku.rl.dqn import DQNNet, ReplayBuffer, SIZE, select_action, DQNTrainer  # noqa: E402
+from gomoku.rl.dqn import DQNNet, ReplayBuffer, SIZE, WIN_LEN, select_action, DQNTrainer, random_opponent, make_minimax_opponent, policy_entropy_from_logits, play_episode  # noqa: E402
 from gomoku.core import Board
 
 
@@ -102,3 +102,43 @@ def test_eps_linear_then_clamped():
 def test_train_step_none_below_batch():
     trainer = DQNTrainer(DQNNet(size=15, channels=8), batch_size=16)
     assert trainer.train_step() is None
+
+
+def test_random_opponent_legal():
+    b = Board()
+    a = random_opponent(b, np.random.default_rng(0))
+    assert b.grid[b.action_to_move(a)] == 0
+
+
+def test_minimax_opponent_returns_legal():
+    opp = make_minimax_opponent("easy")
+    b = Board(); b.play(7, 7)
+    a = opp(b, np.random.default_rng(0))
+    assert b.grid[b.action_to_move(a)] == 0
+
+
+def test_policy_entropy_uniform_and_peaked():
+    q = np.zeros(SIZE * SIZE)
+    legal = np.arange(SIZE * SIZE)
+    assert policy_entropy_from_logits(q, legal) == pytest.approx(np.log(SIZE * SIZE), rel=1e-3)
+    q2 = np.zeros(SIZE * SIZE); q2[112] = 10.0
+    assert policy_entropy_from_logits(q2, legal) < 0.1
+
+
+def test_play_episode_sparse_reward_terminal():
+    b = Board(size=SIZE, win_len=WIN_LEN)
+    def fake_black(board):
+        return int(np.random.choice(np.flatnonzero(board.valid_moves())))
+    def fake_opponent(board):
+        return int(np.random.choice(np.flatnonzero(board.valid_moves())))
+    # 假 learner：持有 buffer 与 train_step
+    class Fake:
+        buf = None
+        def __init__(self):
+            self.buf = type("B", (), {"push": lambda *a, **k: None})()
+            self.buffer = self.buf
+        def train_step(self):
+            return None
+    info = play_episode(b, fake_black, fake_opponent, Fake())
+    assert info["steps"] == len(b.history) > 0
+    assert info["winner"] in {1, 2, 3}

@@ -137,3 +137,58 @@ class DQNTrainer:
         if self.steps_done % self.target_sync_steps == 0:
             self.sync_target()
         return float(loss.item())
+
+def random_opponent(board, rng=None) -> int:
+    return int(np.random.choice(np.flatnonzero(board.valid_moves())))
+
+
+def make_minimax_opponent(level: str = "easy"):
+    from gomoku.players.minimax import MinimaxPlayer   # 延迟导入避免循环
+    player = MinimaxPlayer(level)
+    def opponent_fn(board, rng=None) -> int:
+        return player.select_move(board)
+    return opponent_fn
+
+
+def policy_entropy_from_logits(q: np.ndarray, legal: np.ndarray, tau: float = 0.3) -> float:
+    """Q 值导出策略熵：softmax(Q/τ) 在合法动作上的 Shannon 熵（越小越决定）。"""
+    z = q[legal] / tau
+    z = z - z.max()
+    p = np.exp(z)
+    p = p / p.sum()
+    return float(-(p * np.log(p + 1e-12)).sum())
+
+
+def play_episode(board, choose_black, opponent_fn, learner) -> dict:
+    """自对弈一局：黑=学员（choose/replay 学习），白=对手脚本。
+
+    learner 需提供 .train_step()（每步尝试学习，返回 loss 或 None）与 .buffer（push 经验）。
+    转移按"黑回合闭合"收：黑一手后，等对手应完（或黑自己连五获胜），
+    用当时最新 observation 作 next_state。终局回填稀疏 +1/-1/0。
+    """
+    losses = []
+    pending = None   # (state_before, action)
+    while not board.game_over:
+        if board.current_player == BLACK:
+            state = board.observation(BLACK)
+            action = choose_black(board)
+            r, c = board.action_to_move(action)
+            board.play(r, c)
+            pending = (state, action)
+        else:
+            action = opponent_fn(board)
+            r, c = board.action_to_move(action)
+            board.play(r, c)
+        l = learner.train_step()         # 每步尝试学习（缓冲不足则 None/跳过）
+        if l is not None:
+            losses.append(l)
+        if pending is not None:
+            if board.game_over:
+                reward = {BLACK: 1.0, WHITE: -1.0, DRAW: 0.0}[board.winner]
+                learner.buffer.push(*pending, reward, board.observation(BLACK), True)
+                pending = None
+            elif board.current_player == BLACK:
+                learner.buffer.push(*pending, 0.0, board.observation(BLACK), False)
+                pending = None
+    return {"winner": int(board.winner), "steps": len(board.history),
+            "losses": losses}
