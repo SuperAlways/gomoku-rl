@@ -66,3 +66,15 @@ class ReplayBuffer:
 
     def __len__(self) -> int:
         return self.size
+
+def select_action(net: DQNNet, board, eps: float, device: str = "cpu") -> int:
+    """ε-greedy：eps 内随机合法位，否则对 mask 后的 Q 值 argmax（返回 int 动作）。"""
+    legal = np.flatnonzero(board.valid_moves())
+    if np.random.random() < eps:
+        return int(np.random.choice(legal))
+    with torch.no_grad():
+        obs = torch.as_tensor(board.observation(), dtype=torch.float32).unsqueeze(0)
+        q = net(obs.to(device)).squeeze(0)               # (225,)
+    q = q.detach().cpu().numpy()
+    q[np.array([i for i in range(SIZE * SIZE) if i not in legal.tolist()])] = -np.inf
+    return int(legal[q[legal].argmax()])
