@@ -3,7 +3,7 @@ import pytest
 
 torch = pytest.importorskip("torch")   # torch 未装则整模块跳过
 
-from gomoku.rl.dqn import DQNNet, ReplayBuffer, SIZE, select_action  # noqa: E402
+from gomoku.rl.dqn import DQNNet, ReplayBuffer, SIZE, select_action, DQNTrainer  # noqa: E402
 from gomoku.core import Board
 
 
@@ -68,3 +68,37 @@ def test_select_action_eps_random_legal():
         a = select_action(net, b, eps=1.0)
         r, c = b.action_to_move(a)
         assert b.grid[r, c] == 0
+
+
+def test_sync_target_copies_weights():
+    net = DQNNet(size=15, channels=8)
+    trainer = DQNTrainer(net, batch_size=16, device="cpu")
+    w = trainer.net.head[-1].weight.data.clone()
+    with torch.no_grad():
+        trainer.target_net.head[-1].weight.fill_(0.0)
+    trainer.sync_target()
+    assert torch.equal(trainer.target_net.head[-1].weight.data, w)
+
+
+def test_train_step_returns_loss_and_increments():
+    net = DQNNet(size=15, channels=8)
+    trainer = DQNTrainer(net, batch_size=16, device="cpu")
+    for _ in range(16):
+        trainer.buffer.push(*([np.zeros((2, 15, 15), np.float32), 0, 0.0,
+                             np.zeros((2, 15, 15), np.float32), False]))
+    loss = trainer.train_step()
+    assert loss is not None and loss == loss           # 有限且非 NaN
+    assert trainer.steps_done == 1
+
+
+def test_eps_linear_then_clamped():
+    trainer = DQNTrainer(DQNNet(size=15, channels=8), batch_size=16)
+    assert trainer.get_eps(0, 1.0, 0.05, 100) == pytest.approx(1.0)
+    mid = trainer.get_eps(50, 1.0, 0.05, 100)
+    assert mid < 1.0 and mid > 0.05
+    assert trainer.get_eps(200, 1.0, 0.05, 100) == pytest.approx(0.05)
+
+
+def test_train_step_none_below_batch():
+    trainer = DQNTrainer(DQNNet(size=15, channels=8), batch_size=16)
+    assert trainer.train_step() is None
