@@ -142,3 +142,31 @@ def test_play_episode_sparse_reward_terminal():
     info = play_episode(b, fake_black, fake_opponent, Fake())
     assert info["steps"] == len(b.history) > 0
     assert info["winner"] in {1, 2, 3}
+
+
+from gomoku.rl.dqn import DQNTrainer, DQNNet, train, plot_curves
+
+
+def test_train_smoke_end_to_end(tmp_path):
+    net = DQNNet(size=15, channels=8)
+    trainer = DQNTrainer(net, batch_size=8, device="cpu")
+    metrics = train(trainer, episodes_per_era=6, num_eras=2,
+                    eps_decay=6, device="cpu", out_dir=str(tmp_path))
+    assert len(metrics) == 2
+    assert all({"era", "steps", "loss", "entropy", "eps",
+                "win_vs_random", "win_vs_easy"} <= set(m) for m in metrics)
+    ckpt = tmp_path / "checkpoints" / "gen0001.pt"
+    assert ckpt.exists()
+    (tmp_path / "metrics.jsonl").exists()
+
+
+def test_plot_curves_writes_png(tmp_path):
+    metrics = [
+        {"era": 0, "steps": 10.0, "loss": 1.0, "entropy": 5.0, "eps": 0.5,
+         "win_vs_random": 0.5, "win_vs_easy": 0.0},
+        {"era": 1, "steps": 12.0, "loss": 0.5, "entropy": 3.0, "eps": 0.1,
+         "win_vs_random": 0.7, "win_vs_easy": 0.2},
+    ]
+    out = tmp_path / "curve.png"
+    plot_curves(metrics, str(out))
+    assert out.exists()

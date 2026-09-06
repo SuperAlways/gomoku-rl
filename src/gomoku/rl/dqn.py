@@ -8,7 +8,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from gomoku.core import BLACK, DRAW, WHITE
+from gomoku.core import BLACK, DRAW, WHITE, Board
 
 SIZE = 15
 WIN_LEN = 5
@@ -76,7 +76,10 @@ def select_action(net: DQNNet, board, eps: float, device: str = "cpu") -> int:
         obs = torch.as_tensor(board.observation(), dtype=torch.float32).unsqueeze(0)
         q = net(obs.to(device)).squeeze(0)               # (225,)
     q = q.detach().cpu().numpy()
-    q[np.array([i for i in range(SIZE * SIZE) if i not in legal.tolist()])] = -np.inf
+    illegal = np.array([i for i in range(SIZE * SIZE) if i not in legal.tolist()],
+                       dtype=np.int64)
+    if len(illegal) > 0:
+        q[illegal] = -np.inf
     return int(legal[q[legal].argmax()])
 
 
@@ -192,3 +195,119 @@ def play_episode(board, choose_black, opponent_fn, learner) -> dict:
                 pending = None
     return {"winner": int(board.winner), "steps": len(board.history),
             "losses": losses}
+
+
+class _NoopTrainer:
+    """基准赛专用占位：只提供 .train_step() 与 .buffer，no-op，确保只测不训。"""
+    buffer = type("B", (), {"push": lambda *a, **k: None})()
+    def train_step(self):
+        return None
+
+
+_NOOP = _NoopTrainer()
+
+
+def _run_benchmark(candidate, opponent, n: int = 20) -> float:
+    """candidate：fn(board)->action（贪心）；opponent：fn(board)->action；黑方胜率。"""
+    wins = 0
+    for _ in range(n):
+        board = Board(size=SIZE, win_len=WIN_LEN)
+        info = play_episode(board, candidate, opponent, _NOOP)
+        wins += int(info["winner"] == BLACK)
+    return wins / n
+
+
+def _default_evaluate(trainer) -> dict:
+    free = lambda b: select_action(trainer.net, b, eps=0.0, device=trainer.device)
+    return {
+        "win_vs_random": _run_benchmark(free, random_opponent, 20),
+        "win_vs_easy": _run_benchmark(free, make_minimax_opponent("easy"), 20),
+    }
+
+
+def evaluate(net: DQNNet, opponent, n: int = 20, device: str = "cpu") -> float:
+    """只测不训：贪心（eps=0）打 n 局固定对手的胜率。"""
+    free = lambda b: select_action(net, b, eps=0.0, device=device)
+    return _run_benchmark(free, opponent, n)
+
+
+def load_net(checkpoint: str, size: int = SIZE, channels: int = 64,
+             device: str = "cpu") -> DQNNet:
+    net = DQNNet(size=size, channels=channels)
+    net.load_state_dict(torch.load(checkpoint, map_location=device))
+    net.eval()
+    return net
+
+
+def opening_policy_entropy(trainer) -> float:
+    """空盘开局观测下的动作策略熵（越小越决定，读取网络中是否有局部结构）。"""
+    with torch.no_grad():
+        obs = torch.as_tensor(Board(size=SIZE, win_len=WIN_LEN).observation(),
+                              dtype=torch.float32, device=trainer.device).unsqueeze(0)
+        q = trainer.net(obs).squeeze(0).detach().cpu().numpy()
+    return policy_entropy_from_logits(q, np.arange(SIZE * SIZE))
+
+
+def train(trainer, episodes_per_era: int = 20_000, num_eras: int = 60,
+          eps_start: float = 1.0, eps_end: float = 0.05,
+          eps_decay: int = 720_000, seed: int = 0, device: str = "cpu",
+          out_dir: str = "runs/e1", evaluate_fn=None, eval_n: int = 20
+          ) -> list[dict]:
+    """逐代自对弈主循环：B2 对手池、ε 退火、replay 累积、逐代基准赛写 metrics.jsonl。
+
+    evaluate_fn 不传则用 _default_evaluate（vs random / vs minimax-easy 各 20 局）。
+    """
+    import json
+    import pathlib
+    out = pathlib.Path(out_dir)
+    (out / "checkpoints").mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(seed)
+    opps = [random_opponent, make_minimax_opponent("easy")]   # B2：对半随机抽
+    if evaluate_fn is None:
+        evaluate_fn = _default_evaluate
+    logs = []
+    all_loss, all_steps = [], []
+    for era in range(num_eras):
+        for n_local in range(episodes_per_era):
+            opp = opps[int(rng.random() >= 0.5)]
+            eps = trainer.get_eps(era * episodes_per_era + n_local,
+                                  eps_start, eps_end, eps_decay)
+            board = Board(size=SIZE, win_len=WIN_LEN)
+            candidate = lambda b: select_action(trainer.net, b, eps, device)
+            info = play_episode(board, candidate, opp, trainer)
+            all_steps.append(info["steps"])
+            all_loss.extend(info["losses"])
+        row = {
+            "era": era,
+            "steps": float(np.mean(all_steps[-episodes_per_era:])),
+            "loss": float(np.mean(all_loss[-episodes_per_era:])) if all_loss else 0.0,
+            "entropy": opening_policy_entropy(trainer),
+            "eps": eps,
+        }
+        row.update(evaluate_fn(trainer))
+        logs.append(row)
+        with open(out / "metrics.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(row) + "\n")
+        torch.save(trainer.net.state_dict(),
+                   out / "checkpoints" / f"gen{era:04d}.pt")
+    return logs
+
+
+def plot_curves(metrics: list[dict], out_path: str) -> None:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    eras = [m["era"] for m in metrics]
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+    axes[0, 0].plot(eras, [m["win_vs_random"] for m in metrics])
+    axes[0, 0].set_title("win vs random")
+    axes[0, 1].plot(eras, [m["win_vs_easy"] for m in metrics])
+    axes[0, 1].set_title("win vs minimax-easy")
+    axes[1, 0].plot(eras, [m["steps"] for m in metrics])
+    axes[1, 0].set_title("avg episode length")
+    axes[1, 1].plot(eras, [m["loss"] for m in metrics])
+    axes[1, 1].set_title("training loss")
+    for ax in axes.flat:
+        ax.set_xlabel("era")
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=120)
