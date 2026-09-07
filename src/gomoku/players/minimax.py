@@ -194,4 +194,8 @@ class MinimaxPlayer(Player):
             board.undo()
             if score > best_score:
                 best_action, best_score = (r, c), score
+        if best_action is None:
+            # 候选点耗尽（极端满盘），退回任一合法步
+            legal = np.flatnonzero(board.valid_moves())
+            return int(legal[0])
         return best_action[0] * board.size + best_action[1]
